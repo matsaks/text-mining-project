@@ -1,0 +1,19 @@
+# Ignore all files in the data directory
+data/
+data/raw/
+data/processed/
+
+# Ignore R specific files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Ignore output directories
+output/
+output/figures/
+output/results/
+
+# Ignore system files
+.DS_Store
+Thumbs.db 
