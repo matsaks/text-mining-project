@@ -12,7 +12,10 @@ This project analyzes the sentiment of news articles from 2017, creating a timel
 ├── R/                 # R scripts
 │   ├── data_processing.R
 │   ├── sentiment_analysis.R
-│   └── visualization.R
+│   ├── visualization.R
+│   └── utils/         # Utility and setup scripts
+│       ├── check_packages.R
+│       └── download_afinn.R
 ├── output/            # Generated outputs
 │   ├── figures/       # Plots and visualizations
 │   └── results/       # Analysis results
@@ -29,6 +32,8 @@ install.packages(c("tidytext", "dplyr", "ggplot2", "lubridate", "stringr"))
 ```
 
 2. Run the analysis scripts in the following order:
+   - `R/utils/check_packages.R` (to ensure required packages are installed)
+   - `R/utils/download_afinn.R` (to download the AFINN lexicon)
    - `R/data_processing.R`
    - `R/sentiment_analysis.R`
    - `R/visualization.R`
