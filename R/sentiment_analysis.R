@@ -31,7 +31,7 @@ analyze_sentiment <- function(processed_data) {
                 word_count = nrow(words_dt)
             )
         },
-        by = .(article_date, title, author, publication)
+        by = .(article_date, title, url)
     ]
 
     # Aggregate by date
