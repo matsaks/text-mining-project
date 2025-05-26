@@ -57,10 +57,11 @@ preprocess_text <- function(data) {
                 title = title,
                 article_date = article_date,
                 url = url,
+                publication = publication,
                 words = list(words)
             )
         },
-        by = .(title, article_date, url)
+        by = .(title, article_date, url, publication)
     ]
 
     return(processed_data)
@@ -82,62 +83,54 @@ main <- function() {
     # Process the file in chunks
     chunk_size <- 1000
     chunk_number <- 1
+    input_file <- "data/raw/news_2016_sample_50000.csv" # Use consistent file name
 
     # Read and process chunks
     while (TRUE) {
         # Read chunk of data
-        if (chunk_number == 1) {
-            raw_data <- read_csv("data/raw/news_2016_sample.csv",
-                skip = 0,
-                n_max = chunk_size,
-                col_names = TRUE,
-                col_types = cols(
-                    year = col_integer(),
-                    month = col_integer(),
-                    day = col_integer(),
-                    title = col_character(),
-                    article = col_character(),
-                    url = col_character()
-                )
-            )
-        } else {
-            raw_data <- read_csv("data/raw/news_2016.csv",
-                skip = (chunk_number - 1) * chunk_size,
-                n_max = chunk_size,
-                col_names = FALSE,
-                col_types = cols(
-                    year = col_double(),
-                    month = col_double(),
-                    day = col_integer(),
-                    title = col_character(),
-                    article = col_character(),
-                    url = col_character()
-                )
-            )
-            # Manually assign column names
-            colnames(raw_data) <- c("year", "month", "day", "title", "article", "url")
-        }
-
-        # Diagnostics: print column names and first few rows
-        cat(sprintf("\nChunk %d: column names: %s\n", chunk_number, paste(colnames(raw_data), collapse = ", ")))
-        print(head(raw_data, 2))
-
-        # Check for NA or malformed date fields
-        cat("NAs in year:", sum(is.na(raw_data$year)), ", month:", sum(is.na(raw_data$month)), ", day:", sum(is.na(raw_data$day)), "\n")
-        cat("Unique years:", paste(unique(raw_data$year), collapse = ", "), "\n")
-        cat("Unique months:", paste(unique(raw_data$month), collapse = ", "), "\n")
-        cat("Unique days:", paste(unique(raw_data$day), collapse = ", "), "\n")
-
-        # Break if no more data
-        if (nrow(raw_data) == 0) break
-
-        # Process the chunk
-        cat(sprintf("\nProcessing chunk %d...\n", chunk_number))
-
         tryCatch(
             {
+                raw_data <- read_csv(input_file,
+                    skip = (chunk_number - 1) * chunk_size,
+                    n_max = chunk_size,
+                    col_names = chunk_number == 1, # Only use column names for first chunk
+                    col_types = cols(
+                        year = col_integer(),
+                        month = col_integer(),
+                        day = col_integer(),
+                        title = col_character(),
+                        article = col_character(),
+                        url = col_character(),
+                        publication = col_character()
+                    )
+                )
+
+                # If we got no data, we're done
+                if (nrow(raw_data) == 0) {
+                    cat("Reached end of file.\n")
+                    break
+                }
+
+                # If this isn't the first chunk, we need to set column names
+                if (chunk_number > 1) {
+                    colnames(raw_data) <- c("year", "month", "day", "title", "article", "url", "publication")
+                }
+
+                # Diagnostics: print column names and first few rows
+                cat(sprintf("\nChunk %d: column names: %s\n", chunk_number, paste(colnames(raw_data), collapse = ", ")))
+                print(head(raw_data, 2))
+
+                # Check for NA or malformed date fields
+                cat("NAs in year:", sum(is.na(raw_data$year)), ", month:", sum(is.na(raw_data$month)), ", day:", sum(is.na(raw_data$day)), "\n")
+                cat("Unique years:", paste(unique(raw_data$year), collapse = ", "), "\n")
+                cat("Unique months:", paste(unique(raw_data$month), collapse = ", "), "\n")
+                cat("Unique days:", paste(unique(raw_data$day), collapse = ", "), "\n")
+
+                # Process the chunk
+                cat(sprintf("\nProcessing chunk %d...\n", chunk_number))
+
                 # Ensure columns are present and not all NA before processing
-                required_cols <- c("year", "month", "day", "title", "article", "url")
+                required_cols <- c("year", "month", "day", "title", "article", "url", "publication")
                 missing_cols <- setdiff(required_cols, colnames(raw_data))
                 if (length(missing_cols) > 0) {
                     stop(sprintf("Missing columns: %s", paste(missing_cols, collapse = ", ")))
