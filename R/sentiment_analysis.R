@@ -10,8 +10,26 @@ library(data.table)
 
 # Function to perform sentiment analysis
 analyze_sentiment <- function(processed_data) {
-    # Load AFINN lexicon
-    afinn <- readRDS("data/raw/afinn.rds")
+    # Load AFINN lexicon and convert to data.table
+    afinn <- as.data.table(readRDS("data/raw/afinn.rds"))
+    
+    # Define negation words
+    negation_words <- c("not", "no", "never", "neither", "nor", "none", "nothing", 
+                       "nowhere", "hardly", "barely", "scarcely", "doesn't", "isn't", 
+                       "wasn't", "shouldn't", "wouldn't", "couldn't", "won't", "can't", 
+                       "don't", "didn't", "haven't", "hasn't", "hadn't")
+    
+    # Define intensifiers and their strength multipliers
+    intensifiers <- data.table(
+        word = c("very", "extremely", "incredibly", "absolutely", "totally", 
+                "completely", "utterly", "really", "so", "too", "highly", 
+                "particularly", "especially", "exceptionally", "remarkably",
+                "immensely", "enormously", "tremendously", "exceedingly",
+                "intensely", "profoundly", "deeply", "thoroughly", "entirely"),
+        multiplier = c(1.5, 2.0, 2.0, 1.8, 1.7, 1.6, 1.9, 1.3, 1.2, 1.4, 1.5,
+                      1.4, 1.4, 1.6, 1.5, 1.7, 1.7, 1.6, 1.5, 1.6, 1.5, 1.4,
+                      1.3, 1.5)
+    )
 
     # Convert to data.table for better performance
     dt <- as.data.table(processed_data)
@@ -19,26 +37,74 @@ analyze_sentiment <- function(processed_data) {
     # Process each article's words and calculate sentiment
     sentiment_scores <- dt[,
         {
-            # Unlist words and convert to data.table
-            words_dt <- data.table(word = unlist(words))
-
-            # Join with AFINN lexicon
-            sentiment <- words_dt[afinn, on = "word", nomatch = 0]
-
-            # Calculate weighted sentiment score for the article
-            # Weight by the number of sentiment-bearing words
-            sentiment_words <- nrow(sentiment)
-            if (sentiment_words > 0) {
-                sentiment_score <- sum(sentiment$value) / sentiment_words
+            # Create bigrams from words
+            words_vec <- unlist(words)
+            if (length(words_vec) < 2) {
+                list(
+                    sentiment_score = 0,
+                    word_count = length(words_vec),
+                    sentiment_word_count = as.integer(0)
+                )
             } else {
-                sentiment_score <- 0
+                # Create bigrams
+                bigrams <- data.table(
+                    word1 = words_vec[1:(length(words_vec)-1)],
+                    word2 = words_vec[2:length(words_vec)]
+                )
+                
+                # Join with AFINN lexicon for both words
+                bigrams <- merge(bigrams, afinn, by.x = "word1", by.y = "word", all.x = TRUE)
+                setnames(bigrams, "value", "value1")
+                bigrams <- merge(bigrams, afinn, by.x = "word2", by.y = "word", all.x = TRUE)
+                setnames(bigrams, "value", "value2")
+                
+                # Join with intensifiers
+                bigrams <- merge(bigrams, intensifiers, by.x = "word1", by.y = "word", all.x = TRUE)
+                setnames(bigrams, "multiplier", "intensifier1")
+                bigrams <- merge(bigrams, intensifiers, by.x = "word2", by.y = "word", all.x = TRUE)
+                setnames(bigrams, "multiplier", "intensifier2")
+                
+                # Calculate sentiment scores considering negations and intensifiers
+                bigrams[, sentiment := {
+                    # Initialize sentiment vector
+                    sentiment <- rep(0, .N)
+                    
+                    # Handle negations
+                    neg_mask <- word1 %in% negation_words
+                    sentiment[neg_mask & !is.na(value2)] <- -value2[neg_mask & !is.na(value2)]
+                    
+                    # Handle intensifiers
+                    intens_mask <- !neg_mask & !is.na(intensifier1) & !is.na(value2)
+                    sentiment[intens_mask] <- value2[intens_mask] * intensifier1[intens_mask]
+                    
+                    # Handle regular sentiment words
+                    reg_mask <- !neg_mask & !intens_mask & !is.na(value2)
+                    sentiment[reg_mask] <- value2[reg_mask]
+                    
+                    # Handle first word sentiment if second word has no sentiment
+                    first_word_mask <- !neg_mask & !intens_mask & is.na(value2) & !is.na(value1)
+                    sentiment[first_word_mask] <- value1[first_word_mask]
+                    
+                    sentiment
+                }]
+                
+                # Count sentiment-bearing bigrams
+                sentiment_bigrams <- bigrams[sentiment != 0]
+                sentiment_words <- as.integer(nrow(sentiment_bigrams))
+                
+                # Calculate weighted sentiment score
+                if (sentiment_words > 0) {
+                    sentiment_score <- sum(sentiment_bigrams$sentiment) / sentiment_words
+                } else {
+                    sentiment_score <- 0
+                }
+                
+                list(
+                    sentiment_score = sentiment_score,
+                    word_count = length(words_vec),
+                    sentiment_word_count = sentiment_words
+                )
             }
-
-            list(
-                sentiment_score = sentiment_score,
-                word_count = nrow(words_dt),
-                sentiment_word_count = sentiment_words
-            )
         },
         by = .(article_date, title, url, publication)
     ]
