@@ -11,7 +11,7 @@ library(data.table)
 # Function to perform sentiment analysis
 analyze_sentiment <- function(processed_data) {
     # Load AFINN lexicon
-    afinn <- get_sentiments("afinn")
+    afinn <- readRDS("data/raw/afinn.rds")
 
     # Convert to data.table for better performance
     dt <- as.data.table(processed_data)
@@ -31,7 +31,7 @@ analyze_sentiment <- function(processed_data) {
                 word_count = nrow(words_dt)
             )
         },
-        by = .(article_date, title, url)
+        by = .(article_date, title, url, publication)
     ]
 
     # Aggregate by date
@@ -46,24 +46,70 @@ analyze_sentiment <- function(processed_data) {
         by = article_date
     ]
 
-    return(daily_sentiment)
+    # Aggregate by publication
+    publication_sentiment <- sentiment_scores[,
+        {
+            list(
+                sentiment_score = mean(sentiment_score, na.rm = TRUE),
+                article_count = .N,
+                total_words = sum(word_count)
+            )
+        },
+        by = publication
+    ]
+
+    return(list(
+        daily_sentiment = daily_sentiment,
+        publication_sentiment = publication_sentiment
+    ))
 }
 
 # Function to identify significant events
 identify_significant_events <- function(sentiment_data) {
-    # Calculate rolling mean and standard deviation
+    # Calculate multiple rolling windows
     sentiment_data <- sentiment_data %>%
         arrange(article_date) %>%
         mutate(
-            rolling_mean = zoo::rollmean(sentiment_score, k = 7, fill = NA),
-            rolling_sd = zoo::rollapply(sentiment_score, width = 7, FUN = sd, fill = NA)
+            # Short-term (7 days) - for immediate spikes
+            rolling_mean_7d = zoo::rollmean(sentiment_score, k = 7, fill = NA),
+            rolling_sd_7d = zoo::rollapply(sentiment_score, width = 7, FUN = sd, fill = NA),
+            
+            # Medium-term (30 days) - for monthly trends
+            rolling_mean_30d = zoo::rollmean(sentiment_score, k = 30, fill = NA),
+            rolling_sd_30d = zoo::rollapply(sentiment_score, width = 30, FUN = sd, fill = NA),
+            
+            # Long-term (90 days) - for seasonal trends
+            rolling_mean_90d = zoo::rollmean(sentiment_score, k = 90, fill = NA),
+            rolling_sd_90d = zoo::rollapply(sentiment_score, width = 90, FUN = sd, fill = NA)
         )
 
-    # Identify peaks (events where sentiment deviates significantly)
+    # Identify significant events using hierarchical criteria
     significant_events <- sentiment_data %>%
+        # First, calculate deviations for each window
+        mutate(
+            dev_7d = abs(sentiment_score - rolling_mean_7d) / rolling_sd_7d,
+            dev_30d = abs(sentiment_score - rolling_mean_30d) / rolling_sd_30d,
+            dev_90d = abs(sentiment_score - rolling_mean_90d) / rolling_sd_90d
+        ) %>%
+        # Then apply hierarchical filtering
         dplyr::filter(
-            abs(sentiment_score - rolling_mean) > 2 * rolling_sd
-        )
+            # Short-term spikes (2.5 standard deviations)
+            dev_7d > 2.5 |
+            # Medium-term trends (2 standard deviations, but not a short-term spike)
+            (dev_30d > 2.0 & dev_7d <= 2.5) |
+            # Long-term trends (1.5 standard deviations, but not a medium-term trend)
+            (dev_90d > 1.5 & dev_30d <= 2.0)
+        ) %>%
+        # Add a column indicating which criteria triggered the significance
+        mutate(
+            significance_type = case_when(
+                dev_7d > 2.5 ~ "Short-term spike",
+                dev_30d > 2.0 & dev_7d <= 2.5 ~ "Medium-term trend",
+                dev_90d > 1.5 & dev_30d <= 2.0 ~ "Long-term trend"
+            )
+        ) %>%
+        # Remove the temporary deviation columns
+        select(-dev_7d, -dev_30d, -dev_90d)
 
     return(significant_events)
 }
@@ -71,14 +117,16 @@ identify_significant_events <- function(sentiment_data) {
 # Main analysis pipeline
 main <- function() {
     # Load processed data
-    processed_data <- readRDS("data/processed/processed_articles_2016.rds")
+    processed_data <- readRDS("data/processed/new_processed_articles_2016.rds")
 
     # Print structure for debugging
     cat("Data structure:\n")
     print(str(processed_data))
 
     # Perform sentiment analysis
-    sentiment_scores <- analyze_sentiment(processed_data)
+    sentiment_results <- analyze_sentiment(processed_data)
+    sentiment_scores <- sentiment_results$daily_sentiment
+    publication_sentiment <- sentiment_results$publication_sentiment
 
     # Identify significant events
     significant_events <- identify_significant_events(sentiment_scores)
@@ -86,15 +134,21 @@ main <- function() {
     # Save results as CSV
     write_csv(sentiment_scores, "output/results/sentiment_scores.csv")
     write_csv(significant_events, "output/results/significant_events.csv")
-
+    write_csv(publication_sentiment, "output/results/publication_sentiment.csv")
+    
     # Print summary statistics
     cat("\nSentiment analysis complete.\n")
     cat("Number of days analyzed:", nrow(sentiment_scores), "\n")
     cat("Number of significant events identified:", nrow(significant_events), "\n")
+    cat("Number of publications analyzed:", nrow(publication_sentiment), "\n")
 
     # Print example of sentiment scores
     cat("\nExample of sentiment scores (first 5 days):\n")
     print(head(sentiment_scores, 5))
+    
+    # Print publication sentiment scores
+    cat("\nPublication sentiment scores:\n")
+    print(publication_sentiment)
 }
 
 # Run the main function

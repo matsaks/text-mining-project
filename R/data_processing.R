@@ -32,6 +32,9 @@ preprocess_text <- function(data) {
     # Convert to data.table for better performance
     dt <- as.data.table(data)
 
+    # Get stopwords from tidytext
+    stop_words <- tidytext::stop_words$word
+
     # Clean and tokenize text
     processed_data <- dt[,
         {
@@ -48,9 +51,10 @@ preprocess_text <- function(data) {
             # Tokenize into words
             words <- unlist(strsplit(clean_text, "\\s+"))
 
-            # Remove empty strings and numbers
+            # Remove empty strings, numbers, and stopwords
             words <- words[words != ""]
             words <- words[!grepl("^[0-9]+$", words)]
+            words <- words[!words %in% stop_words]
 
             # Return as a list
             list(
@@ -73,7 +77,7 @@ main <- function() {
     dir.create("data/processed", showWarnings = FALSE, recursive = TRUE)
 
     # Initialize output file
-    output_file <- "data/processed/processed_articles_2016.rds"
+    output_file <- "data/processed/new_processed_articles_2016.rds"
 
     # Remove existing output file if it exists
     if (file.exists(output_file)) {
