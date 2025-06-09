@@ -185,6 +185,69 @@ identify_significant_events <- function(sentiment_data) {
     return(significant_events)
 }
 
+# Function to analyze topic frequency over time
+analyze_topic_frequency <- function(processed_data, keywords) {
+    # Convert to data.table for better performance
+    dt <- as.data.table(processed_data)
+    
+    # Initialize results data.table
+    topic_freq <- data.table()
+    
+    # Process each keyword
+    for (keyword in keywords) {
+        # Count occurrences of keyword in each article
+        keyword_counts <- dt[,
+            {
+                # Count occurrences in words list
+                count <- sum(sapply(words, function(x) sum(tolower(x) == tolower(keyword))))
+                list(
+                    count = count,
+                    word_count = length(unlist(words))
+                )
+            },
+            by = .(article_date, publication)
+        ]
+        
+        # Calculate normalized frequency (occurrences per 1000 words)
+        keyword_counts[, normalized_freq := (count / word_count) * 1000]
+        
+        # Add keyword column
+        keyword_counts[, keyword := keyword]
+        
+        # Combine with results
+        topic_freq <- rbind(topic_freq, keyword_counts)
+    }
+    
+    # Aggregate by date
+    daily_topic_freq <- topic_freq[,
+        {
+            list(
+                total_count = sum(count),
+                total_words = sum(word_count),
+                normalized_freq = sum(count) / sum(word_count) * 1000
+            )
+        },
+        by = .(article_date, keyword)
+    ]
+    
+    # Aggregate by publication
+    publication_topic_freq <- topic_freq[,
+        {
+            list(
+                total_count = sum(count),
+                total_words = sum(word_count),
+                normalized_freq = sum(count) / sum(word_count) * 1000
+            )
+        },
+        by = .(publication, keyword)
+    ]
+    
+    return(list(
+        daily_frequency = daily_topic_freq,
+        publication_frequency = publication_topic_freq
+    ))
+}
+
 # Main analysis pipeline
 main <- function() {
     # Load processed data
@@ -192,12 +255,20 @@ main <- function() {
 
     # Print structure for debugging
     cat("Data structure:\n")
-    print(str(processed_data))
 
     # Perform sentiment analysis
     sentiment_results <- analyze_sentiment(processed_data)
     sentiment_scores <- sentiment_results$daily_sentiment
     publication_sentiment <- sentiment_results$publication_sentiment
+
+    # Define keywords for topic analysis
+    keywords <- c("election", "climate", "technology", "economy", "health", 
+                 "education", "security", "immigration", "environment", "politics")
+
+    # Perform topic frequency analysis
+    topic_results <- analyze_topic_frequency(processed_data, keywords)
+    daily_topic_freq <- topic_results$daily_frequency
+    publication_topic_freq <- topic_results$publication_frequency
 
     # Identify significant events
     significant_events <- identify_significant_events(sentiment_scores)
@@ -206,12 +277,15 @@ main <- function() {
     write_csv(sentiment_scores, "output/results/sentiment_scores.csv")
     write_csv(significant_events, "output/results/significant_events.csv")
     write_csv(publication_sentiment, "output/results/publication_sentiment.csv")
+    write_csv(daily_topic_freq, "output/results/daily_topic_frequency.csv")
+    write_csv(publication_topic_freq, "output/results/publication_topic_frequency.csv")
     
     # Print summary statistics
     cat("\nSentiment analysis complete.\n")
     cat("Number of days analyzed:", nrow(sentiment_scores), "\n")
     cat("Number of significant events identified:", nrow(significant_events), "\n")
     cat("Number of publications analyzed:", nrow(publication_sentiment), "\n")
+    cat("Number of topics analyzed:", length(keywords), "\n")
 
     # Print example of sentiment scores
     cat("\nExample of sentiment scores (first 5 days):\n")
@@ -220,6 +294,10 @@ main <- function() {
     # Print publication sentiment scores
     cat("\nPublication sentiment scores:\n")
     print(publication_sentiment)
+    
+    # Print example of topic frequencies
+    cat("\nExample of topic frequencies (first 5 days):\n")
+    print(head(daily_topic_freq, 5))
 }
 
 # Run the main function
