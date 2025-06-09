@@ -25,34 +25,61 @@ analyze_sentiment <- function(processed_data) {
             # Join with AFINN lexicon
             sentiment <- words_dt[afinn, on = "word", nomatch = 0]
 
-            # Calculate average sentiment score for the article
+            # Calculate weighted sentiment score for the article
+            # Weight by the number of sentiment-bearing words
+            sentiment_words <- nrow(sentiment)
+            if (sentiment_words > 0) {
+                sentiment_score <- sum(sentiment$value) / sentiment_words
+            } else {
+                sentiment_score <- 0
+            }
+
             list(
-                sentiment_score = mean(sentiment$value, na.rm = TRUE),
-                word_count = nrow(words_dt)
+                sentiment_score = sentiment_score,
+                word_count = nrow(words_dt),
+                sentiment_word_count = sentiment_words
             )
         },
         by = .(article_date, title, url, publication)
     ]
 
-    # Aggregate by date
+    # Aggregate by date with word count normalization
     daily_sentiment <- sentiment_scores[,
         {
+            # Calculate weighted average based on sentiment-bearing words
+            total_sentiment_words <- sum(sentiment_word_count)
+            if (total_sentiment_words > 0) {
+                weighted_score <- sum(sentiment_score * sentiment_word_count) / total_sentiment_words
+            } else {
+                weighted_score <- 0
+            }
+
             list(
-                sentiment_score = mean(sentiment_score, na.rm = TRUE),
+                sentiment_score = weighted_score,
                 article_count = .N,
-                total_words = sum(word_count)
+                total_words = sum(word_count),
+                total_sentiment_words = total_sentiment_words
             )
         },
         by = article_date
     ]
 
-    # Aggregate by publication
+    # Aggregate by publication with word count normalization
     publication_sentiment <- sentiment_scores[,
         {
+            # Calculate weighted average based on sentiment-bearing words
+            total_sentiment_words <- sum(sentiment_word_count)
+            if (total_sentiment_words > 0) {
+                weighted_score <- sum(sentiment_score * sentiment_word_count) / total_sentiment_words
+            } else {
+                weighted_score <- 0
+            }
+
             list(
-                sentiment_score = mean(sentiment_score, na.rm = TRUE),
+                sentiment_score = weighted_score,
                 article_count = .N,
-                total_words = sum(word_count)
+                total_words = sum(word_count),
+                total_sentiment_words = total_sentiment_words
             )
         },
         by = publication
