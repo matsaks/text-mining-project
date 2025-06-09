@@ -19,42 +19,14 @@ create_sentiment_timeline <- function(sentiment_data, significant_events, window
             rolling_mean = zoo::rollmean(sentiment_score, k = window_days, fill = NA)
         )
 
-    # Ensure significance_type is character and print unique values for debugging
-    significant_events$significance_type <- as.character(significant_events$significance_type)
-    print(paste("[DEBUG] unique significance_type in function:", paste(unique(significant_events$significance_type), collapse=", ")))
-    # Map window_days to the correct type string
-    type_string <- switch(as.character(window_days),
-        '7' = 'Short-term spike',
-        '30' = 'Medium-term trend',
-        '90' = 'Long-term trend',
-        NA
-    )
-    print(paste("[DEBUG] type_string:", type_string))
-    window_events <- significant_events[significant_events$significance_type == type_string, c("article_date", "sentiment_score", "significance_type")]
-    print("[DEBUG] head(window_events) after filtering:")
-    print(head(window_events))
-    # Ensure window_events always has the correct columns
-    if (nrow(window_events) == 0) {
-        window_events <- data.frame(article_date = as.Date(character()), sentiment_score = numeric(), significance_type = character())
-    }
-    print("[DEBUG] before geom_point conditional block")
     # Create the timeline plot base
     timeline_plot <- ggplot() +
         # Add the sentiment line
         geom_line(data = sentiment_data, aes(x = article_date, y = sentiment_score), color = "steelblue", linewidth = 1) +
         # Add rolling mean
-        geom_line(data = sentiment_data, aes(x = article_date, y = rolling_mean), color = "darkred", linetype = "dashed", alpha = 0.7)
-    # Add significant events as points only if there are any
-    if (nrow(window_events) > 0) {
-        print("[DEBUG] inside geom_point conditional block")
-        timeline_plot <- timeline_plot +
-            geom_point(
-                data = window_events,
-                mapping = aes(x = article_date, y = sentiment_score, color = significance_type),
-                size = 3, inherit.aes = FALSE
-            )
-    }
-    print("[DEBUG] after geom_point conditional block")
+        geom_line(data = sentiment_data, aes(x = article_date, y = rolling_mean), color = "darkred", linetype = "dashed", alpha = 0.7) +
+        # Add significant events as points
+        geom_point(data = significant_events, aes(x = article_date, y = sentiment_score), color = "red", size = 3)
     timeline_plot <- timeline_plot +
         # Customize the theme
         theme_minimal() +
@@ -141,30 +113,18 @@ main <- function() {
     print("[DEBUG] column names of significant_events after reading:")
     print(colnames(significant_events))
     
-    # Print unique values for debugging
-    print("Unique significance_type values:")
-    print(unique(significant_events$significance_type))
-    
     # Load publication sentiment data
     publication_sentiment <- read_csv("output/results/publication_sentiment.csv")
 
     # Create plots for different time windows
-    short_term_plot <- create_sentiment_timeline(sentiment_data, significant_events, 7, "7-Day")
     medium_term_plot <- create_sentiment_timeline(sentiment_data, significant_events, 30, "30-Day")
-    long_term_plot <- create_sentiment_timeline(sentiment_data, significant_events, 90, "90-Day")
     
     # Create other plots
     count_plot <- create_article_count_plot(sentiment_data)
     publication_plot <- create_publication_sentiment_plot(publication_sentiment)
 
     # Save plots
-    ggsave("output/figures/sentiment_timeline_7day.png", short_term_plot,
-        width = 12, height = 6, dpi = 300
-    )
     ggsave("output/figures/sentiment_timeline_30day.png", medium_term_plot,
-        width = 12, height = 6, dpi = 300
-    )
-    ggsave("output/figures/sentiment_timeline_90day.png", long_term_plot,
         width = 12, height = 6, dpi = 300
     )
     ggsave("output/figures/article_count.png", count_plot,

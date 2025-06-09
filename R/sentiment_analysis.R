@@ -163,46 +163,24 @@ identify_significant_events <- function(sentiment_data) {
     sentiment_data <- sentiment_data %>%
         arrange(article_date) %>%
         mutate(
-            # Short-term (7 days) - for immediate spikes
-            rolling_mean_7d = zoo::rollmean(sentiment_score, k = 7, fill = NA),
-            rolling_sd_7d = zoo::rollapply(sentiment_score, width = 7, FUN = sd, fill = NA),
-            
             # Medium-term (30 days) - for monthly trends
             rolling_mean_30d = zoo::rollmean(sentiment_score, k = 30, fill = NA),
-            rolling_sd_30d = zoo::rollapply(sentiment_score, width = 30, FUN = sd, fill = NA),
-            
-            # Long-term (90 days) - for seasonal trends
-            rolling_mean_90d = zoo::rollmean(sentiment_score, k = 90, fill = NA),
-            rolling_sd_90d = zoo::rollapply(sentiment_score, width = 90, FUN = sd, fill = NA)
+            rolling_sd_30d = zoo::rollapply(sentiment_score, width = 30, FUN = sd, fill = NA)
         )
 
     # Identify significant events using hierarchical criteria
     significant_events <- sentiment_data %>%
         # First, calculate deviations for each window
         mutate(
-            dev_7d = abs(sentiment_score - rolling_mean_7d) / rolling_sd_7d,
-            dev_30d = abs(sentiment_score - rolling_mean_30d) / rolling_sd_30d,
-            dev_90d = abs(sentiment_score - rolling_mean_90d) / rolling_sd_90d
+            dev_30d = abs(sentiment_score - rolling_mean_30d) / rolling_sd_30d
         ) %>%
         # Then apply hierarchical filtering
         dplyr::filter(
-            # Short-term spikes (2.5 standard deviations)
-            dev_7d > 2.5 |
-            # Medium-term trends (2 standard deviations, but not a short-term spike)
-            (dev_30d > 2.0 & dev_7d <= 2.5) |
-            # Long-term trends (1.5 standard deviations, but not a medium-term trend)
-            (dev_90d > 1.5 & dev_30d <= 2.0)
-        ) %>%
-        # Add a column indicating which criteria triggered the significance
-        mutate(
-            significance_type = case_when(
-                dev_7d > 2.5 ~ "Short-term spike",
-                dev_30d > 2.0 & dev_7d <= 2.5 ~ "Medium-term trend",
-                dev_90d > 1.5 & dev_30d <= 2.0 ~ "Long-term trend"
-            )
+            # Medium-term trends (2 standard deviations)
+            dev_30d > 2.0
         ) %>%
         # Remove the temporary deviation columns
-        select(-dev_7d, -dev_30d, -dev_90d)
+        select(-dev_30d)
 
     return(significant_events)
 }
