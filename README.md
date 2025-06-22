@@ -1,6 +1,6 @@
-# Sentiment Analysis of News Articles (2017)
+# Sentiment Analysis of News Articles (2016)
 
-This project analyzes the sentiment of news articles from 2017, creating a timeline visualization to identify patterns and correlations with significant events.
+This project analyzes the sentiment of news articles from 2016, creating a timeline visualization to identify patterns and correlations with significant events.
 
 ## Project Structure
 
